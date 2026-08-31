@@ -5,11 +5,18 @@ A super simple FastAPI application that allows students to view and sign up
 for extracurricular activities at Mergington High School.
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
+from pydantic import BaseModel
+import base64
+import hashlib
+import hmac
+import json
 import os
 from pathlib import Path
+import secrets
+from typing import Optional
 
 app = FastAPI(title="Mergington High School API",
               description="API for viewing and signing up for extracurricular activities")
@@ -18,6 +25,53 @@ app = FastAPI(title="Mergington High School API",
 current_dir = Path(__file__).parent
 app.mount("/static", StaticFiles(directory=os.path.join(Path(__file__).parent,
           "static")), name="static")
+
+teachers_file = current_dir / "teachers.json"
+active_teacher_tokens = {}
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+def load_teachers():
+    with teachers_file.open(encoding="utf-8") as credentials_file:
+        return {
+            teacher["username"]: teacher["password_hash"]
+            for teacher in json.load(credentials_file)["teachers"]
+        }
+
+
+teachers = load_teachers()
+
+
+def password_matches(password: str, password_hash: str) -> bool:
+    algorithm, iterations, encoded_salt, expected_digest = password_hash.split("$")
+    if algorithm != "pbkdf2_sha256":
+        return False
+
+    digest = hashlib.pbkdf2_hmac(
+        "sha256",
+        password.encode("utf-8"),
+        base64.b64decode(encoded_salt),
+        int(iterations),
+    )
+    return hmac.compare_digest(
+        base64.b64encode(digest).decode("ascii"),
+        expected_digest,
+    )
+
+
+def require_teacher(authorization: Optional[str] = Header(default=None)) -> str:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Teacher authentication is required")
+
+    token = authorization.removeprefix("Bearer ")
+    if token not in active_teacher_tokens:
+        raise HTTPException(status_code=401, detail="Invalid or expired teacher session")
+
+    return active_teacher_tokens[token]
 
 # In-memory activity database
 activities = {
@@ -88,8 +142,23 @@ def get_activities():
     return activities
 
 
+@app.post("/login")
+def login(credentials: LoginRequest):
+    password_hash = teachers.get(credentials.username)
+    if not password_hash or not password_matches(credentials.password, password_hash):
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+    token = secrets.token_urlsafe(32)
+    active_teacher_tokens[token] = credentials.username
+    return {"access_token": token, "token_type": "bearer"}
+
+
 @app.post("/activities/{activity_name}/signup")
-def signup_for_activity(activity_name: str, email: str):
+def signup_for_activity(
+    activity_name: str,
+    email: str,
+    teacher: str = Depends(require_teacher),
+):
     """Sign up a student for an activity"""
     # Validate activity exists
     if activity_name not in activities:
@@ -111,7 +180,11 @@ def signup_for_activity(activity_name: str, email: str):
 
 
 @app.delete("/activities/{activity_name}/unregister")
-def unregister_from_activity(activity_name: str, email: str):
+def unregister_from_activity(
+    activity_name: str,
+    email: str,
+    teacher: str = Depends(require_teacher),
+):
     """Unregister a student from an activity"""
     # Validate activity exists
     if activity_name not in activities:

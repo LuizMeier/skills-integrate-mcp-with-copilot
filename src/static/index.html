@@ -10,6 +10,8 @@
     <header>
       <h1>Mergington High School</h1>
       <h2>Extracurricular Activities</h2>
+      <button id="login-button" class="user-button" type="button" title="Teacher sign in" aria-label="Teacher sign in">&#128100;</button>
+      <button id="logout-button" class="logout-button hidden" type="button">Sign out</button>
     </header>
 
     <main>
@@ -21,7 +23,7 @@
         </div>
       </section>
 
-      <section id="signup-container">
+      <section id="signup-container" class="hidden">
         <h3>Sign Up for an Activity</h3>
         <form id="signup-form">
           <div class="form-group">
@@ -40,6 +42,23 @@
         <div id="message" class="hidden"></div>
       </section>
     </main>
+
+    <div id="login-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="login-title">
+      <form id="login-form" class="modal-content">
+        <button id="close-login-button" class="close-button" type="button" title="Close sign in" aria-label="Close sign in">&times;</button>
+        <h3 id="login-title">Teacher sign in</h3>
+        <div class="form-group">
+          <label for="username">Username:</label>
+          <input type="text" id="username" required autocomplete="username" />
+        </div>
+        <div class="form-group">
+          <label for="password">Password:</label>
+          <input type="password" id="password" required autocomplete="current-password" />
+        </div>
+        <button type="submit">Sign in</button>
+        <div id="login-message" class="hidden"></div>
+      </form>
+    </div>
 
     <footer>
       <p>&copy; 2026 Mergington High School</p>
